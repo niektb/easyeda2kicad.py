@@ -104,6 +104,14 @@ def get_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
+    parser.add_argument(
+        "--use_toolbox_dir",
+        help="Use Toolbox directory for importing 3D models",
+        required=False,
+        default=False,
+        action="store_true",
+    )
+
     return parser
 
 
@@ -322,6 +330,9 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
             model_3d_path = "${EASYEDA2KICAD}/easyeda2kicad.3dshapes"
         if arguments["project_relative"]:
             model_3d_path = "${KIPRJMOD}" + model_3d_path
+        if arguments["use_toolbox_dir"]:
+            model_3d_path = "${AXIGN_TOOLBOX_DIR}" + model_3d_path
+
 
         ki_footprint.export(
             footprint_full_path=f"{footprint_path}/{footprint_filename}",
