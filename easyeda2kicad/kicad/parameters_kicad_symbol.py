@@ -137,6 +137,7 @@ class KiSymbolInfo:
     prefix: str
     package: str
     manufacturer: str
+    mpn: str
     datasheet: str
     lcsc_id: str
     jlc_id: str
@@ -285,13 +286,26 @@ class KiSymbolInfo:
                     hide="hide",
                 )
             )
+        if self.manufacturer:
+            field_offset_y += KiExportConfigV6.FIELD_OFFSET_INCREMENT.value
+            header.append(
+                property_template.format(
+                    key="MFR.Part #",
+                    value=self.mpn,
+                    id_=5,
+                    pos_y=self.y_low - field_offset_y,
+                    font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
+                    style="",
+                    hide="hide",
+                )
+            )
         if self.lcsc_id:
             field_offset_y += KiExportConfigV6.FIELD_OFFSET_INCREMENT.value
             header.append(
                 property_template.format(
-                    key="LCSC Part",
+                    key="LCSC Part #",
                     value=self.lcsc_id,
-                    id_=5,
+                    id_=6,
                     pos_y=self.y_low - field_offset_y,
                     font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
                     style="",
@@ -304,7 +318,7 @@ class KiSymbolInfo:
                 property_template.format(
                     key="JLC Part",
                     value=self.jlc_id,
-                    id_=6,
+                    id_=7,
                     pos_y=self.y_low - field_offset_y,
                     font_size=KiExportConfigV6.PROPERTY_FONT_SIZE.value,
                     style="",

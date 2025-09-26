@@ -287,6 +287,7 @@ class EeSymbolInfo:
     prefix: str = ""
     package: str = ""
     manufacturer: str = ""
+    mpn: str = ""
     datasheet: str = ""
     lcsc_id: str = ""
     jlc_id: str = ""
