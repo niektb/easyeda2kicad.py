@@ -19,7 +19,15 @@ class EasyedaApi:
             "Accept-Encoding": "gzip, deflate",
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": f"easyeda2kicad v{__version__}",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/102.0.5005.167 Electron/19.1.9 Safari/537.36 "
+                "EasyEDA-Editor/6.5.46"
+            ),
+            "Origin": "https://easyeda.com",
+            "Referer": "https://easyeda.com/editor",
+            "X-Requested-With": "XMLHttpRequest",
         }
 
     def get_info_from_easyeda_api(self, lcsc_id: str) -> dict:
