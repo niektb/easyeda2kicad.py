@@ -115,16 +115,18 @@ def get_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--debug",
-        help="set the logging level to debug",
-        required=False,
-        default=False,
-        action="store_true",
+        "--model-3d-env",
+        metavar="NAME",
+        help=(
+            "Use a KiCad environment variable as the base directory for 3D model "
+            "references"
+        ),
+        type=str,
     )
 
     parser.add_argument(
-        "--use_toolbox_dir",
-        help="Use Toolbox directory for importing 3D models",
+        "--debug",
+        help="set the logging level to debug",
         required=False,
         default=False,
         action="store_true",
@@ -152,6 +154,16 @@ def valid_arguments(arguments: dict) -> bool:
 
     kicad_version = KicadVersion.v5 if arguments.get("v5") else KicadVersion.v6
     arguments["kicad_version"] = kicad_version
+
+    if arguments["model_3d_env"] and not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]*", arguments["model_3d_env"]
+    ):
+        logging.error("The 3D model environment variable must be a valid KiCad name")
+        return False
+
+    if arguments["model_3d_env"] and arguments["project_relative"]:
+        logging.error("--model-3d-env cannot be combined with --project-relative")
+        return False
 
     if arguments["project_relative"] and not arguments["output"]:
         logging.error(
@@ -360,17 +372,20 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
         ki_footprint = ExporterFootprintKicad(footprint=easyeda_footprint)
         footprint_filename = f"{easyeda_footprint.info.name}.kicad_mod"
         footprint_path = f"{arguments['output']}.pretty"
-        model_3d_path = f"{arguments['output']}.3dshapes".replace("\\", "/").replace(
-            "./", "/"
-        )
+        if arguments.get("model_3d_env"):
+            library_name = arguments["output"].rstrip("/").split("/")[-1]
+            model_3d_path = (
+                f"${{{arguments['model_3d_env']}}}/{library_name}.3dshapes"
+            )
+        else:
+            model_3d_path = f"{arguments['output']}.3dshapes".replace(
+                "\\", "/"
+            ).replace("./", "/")
 
-        if arguments.get("use_default_folder"):
-            model_3d_path = "${EASYEDA2KICAD}/easyeda2kicad.3dshapes"
-        if arguments["project_relative"]:
-            model_3d_path = "${KIPRJMOD}" + model_3d_path
-        if arguments["use_toolbox_dir"]:
-            model_3d_path = "${AXIGN_TOOLBOX_DIR}" + model_3d_path
-
+            if arguments.get("use_default_folder"):
+                model_3d_path = "${EASYEDA2KICAD}/easyeda2kicad.3dshapes"
+            if arguments["project_relative"]:
+                model_3d_path = "${KIPRJMOD}" + model_3d_path
 
         ki_footprint.export(
             footprint_full_path=f"{footprint_path}/{footprint_filename}",

@@ -1,5 +1,6 @@
 # Global imports
 import logging
+import re
 from math import acos, cos, isnan, pi, sin, sqrt
 from typing import Tuple, Union
 
@@ -7,6 +8,123 @@ from easyeda2kicad.easyeda.parameters_easyeda import ee_footprint
 from easyeda2kicad.kicad.parameters_kicad_footprint import *
 
 # ---------------------------------------
+
+
+COURTYARD_CLEARANCE = 0.25
+COURTYARD_LINE_WIDTH = 0.05
+SILKSCREEN_LINE_WIDTH = 0.12
+FAB_LINE_WIDTH = 0.10
+
+
+def footprint_line_width(layers: str, default_width: float) -> float:
+    if "SilkS" in layers:
+        return SILKSCREEN_LINE_WIDTH
+    if "Fab" in layers:
+        return FAB_LINE_WIDTH
+    return default_width
+
+
+def apply_footprint_standards(footprint: KiFootprint) -> None:
+    graphics = (
+        footprint.tracks + footprint.rectangles + footprint.circles + footprint.arcs
+    )
+    for graphic in graphics:
+        graphic.stroke_width = footprint_line_width(
+            graphic.layers, graphic.stroke_width
+        )
+
+    bounds = [float("inf"), float("inf"), float("-inf"), float("-inf")]
+
+    def include_point(x: float, y: float, padding: float = 0) -> None:
+        bounds[0] = min(bounds[0], x - padding)
+        bounds[1] = min(bounds[1], y - padding)
+        bounds[2] = max(bounds[2], x + padding)
+        bounds[3] = max(bounds[3], y + padding)
+
+    for pad in footprint.pads:
+        polygon_points = re.findall(
+            r"\(xy\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\)",
+            pad.polygon,
+        )
+        if pad.shape == "custom" and polygon_points:
+            for x, y in polygon_points:
+                include_point(pad.pos_x + float(x), pad.pos_y + float(y))
+            continue
+
+        angle = float(pad.orientation or 0)
+        radians = angle * pi / 180
+        half_width = (
+            abs(cos(radians)) * pad.width / 2
+            + abs(sin(radians)) * pad.height / 2
+        )
+        half_height = (
+            abs(sin(radians)) * pad.width / 2
+            + abs(cos(radians)) * pad.height / 2
+        )
+        bounds[0] = min(bounds[0], pad.pos_x - half_width)
+        bounds[1] = min(bounds[1], pad.pos_y - half_height)
+        bounds[2] = max(bounds[2], pad.pos_x + half_width)
+        bounds[3] = max(bounds[3], pad.pos_y + half_height)
+
+    fab_outlines = [
+        item
+        for item in footprint.tracks + footprint.rectangles
+        if item.layers in ("F.Fab", "B.Fab")
+    ] + [
+        item
+        for item in footprint.circles + footprint.arcs
+        if item.layers in ("F.Fab", "B.Fab")
+    ]
+    outline_layers = (
+        {"F.Fab", "B.Fab"} if fab_outlines else {"F.SilkS", "B.SilkS"}
+    )
+
+    for item in footprint.tracks + footprint.rectangles:
+        if item.layers not in outline_layers:
+            continue
+        padding = item.stroke_width / 2
+        for x, y in zip(item.points_start_x, item.points_start_y):
+            include_point(x, y, padding)
+        for x, y in zip(item.points_end_x, item.points_end_y):
+            include_point(x, y, padding)
+
+    for circle in footprint.circles:
+        if circle.layers in outline_layers:
+            radius = abs(circle.end_x - circle.cx) + circle.stroke_width / 2
+            include_point(circle.cx, circle.cy, radius)
+
+    for arc in footprint.arcs:
+        if arc.layers in outline_layers:
+            # The full circle is a safe bound for the imported arc.
+            radius = sqrt(
+                (arc.end_x - arc.start_x) ** 2
+                + (arc.end_y - arc.start_y) ** 2
+            )
+            include_point(arc.start_x, arc.start_y, radius + arc.stroke_width / 2)
+
+    for hole in footprint.holes:
+        include_point(hole.pos_x, hole.pos_y, hole.size / 2)
+    for via in footprint.vias:
+        include_point(via.pos_x, via.pos_y, via.diameter / 2)
+
+    if bounds[0] == float("inf"):
+        return
+
+    min_x, min_y, max_x, max_y = bounds
+    min_x -= COURTYARD_CLEARANCE
+    min_y -= COURTYARD_CLEARANCE
+    max_x += COURTYARD_CLEARANCE
+    max_y += COURTYARD_CLEARANCE
+    footprint.tracks.append(
+        KiFootprintTrack(
+            points_start_x=[min_x, max_x, max_x, min_x],
+            points_start_y=[min_y, min_y, max_y, max_y],
+            points_end_x=[max_x, max_x, min_x, min_x],
+            points_end_y=[min_y, max_y, max_y, min_y],
+            stroke_width=COURTYARD_LINE_WIDTH,
+            layers="F.CrtYd",
+        )
+    )
 
 
 def to_radians(n: float) -> float:
@@ -459,6 +577,8 @@ class ExporterFootprintKicad:
             )
             ki_text.mirror = " mirror" if ki_text.layers[0] == "B" else ""
             self.output.texts.append(ki_text)
+
+        apply_footprint_standards(self.output)
 
     def get_ki_footprint(self) -> KiFootprint:
         return self.output
