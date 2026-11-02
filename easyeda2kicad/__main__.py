@@ -28,6 +28,24 @@ from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad
 from easyeda2kicad.kicad.parameters_kicad_symbol import KicadVersion
 
 
+def sanitize_symbol_filename(symbol_name: str) -> str:
+    """Make a symbol name safe to use as a cross-platform filename."""
+    filename = re.sub(
+        r'[<>:"/\\|?*\x00-\x1f]',
+        lambda match: "x" if match[0] == "*" else "_",
+        symbol_name,
+    )
+    filename = filename.rstrip(" .")
+    if not filename:
+        filename = "symbol"
+    if filename != symbol_name:
+        logging.warning(
+            f"Symbol filename {symbol_name!r} contains illegal filename characters; "
+            f"using {filename!r}"
+        )
+    return filename
+
+
 def get_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
@@ -146,19 +164,20 @@ def valid_arguments(arguments: dict) -> bool:
         return False
 
     if arguments["output"]:
-        base_folder = "/".join(arguments["output"].replace("\\", "/").split("/")[:-1])
-        lib_name = (
-            arguments["output"]
-            .replace("\\", "/")
-            .split("/")[-1]
-            .split(".lib")[0]
-            .split(".kicad_sym")[0]
-        )
+        output_path = arguments["output"].replace("\\", "/").rstrip("/")
+        arguments["symbol_dir"] = output_path.lower().endswith(".kicad_symdir")
+        base_folder = "/".join(output_path.split("/")[:-1])
+        output_name = output_path.split("/")[-1]
+        if output_path.lower().endswith(".kicad_symdir"):
+            lib_name = output_name[:-len(".kicad_symdir")]
+        else:
+            lib_name = output_name.split(".lib")[0].split(".kicad_sym")[0]
 
         if not os.path.isdir(base_folder):
             logging.error(f"Can't find the folder : {base_folder}")
             return False
     else:
+        arguments["symbol_dir"] = False
         default_folder = os.path.join(
             os.path.expanduser("~"),
             "Documents",
@@ -185,7 +204,12 @@ def valid_arguments(arguments: dict) -> bool:
         logging.info(f"Create {lib_name}.3dshapes 3D model folder in {base_folder}")
 
     lib_extension = "kicad_sym" if kicad_version == KicadVersion.v6 else "lib"
-    if not os.path.isfile(f"{arguments['output']}.{lib_extension}"):
+    if arguments["symbol_dir"] and kicad_version == KicadVersion.v5:
+        logging.error("Unpacked .kicad_symdir libraries require KiCad 6 or newer")
+        return False
+    if arguments["symbol_dir"]:
+        os.makedirs(f"{arguments['output']}.kicad_symdir", exist_ok=True)
+    elif not os.path.isfile(f"{arguments['output']}.{lib_extension}"):
         with open(
             file=f"{arguments['output']}.{lib_extension}", mode="w+", encoding="utf-8"
         ) as my_lib:
@@ -268,10 +292,21 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
         easyeda_symbol: EeSymbol = importer.get_symbol()
         # print(easyeda_symbol)
 
-        is_id_already_in_symbol_lib = id_already_in_symbol_lib(
-            lib_path=f"{arguments['output']}.{sym_lib_ext}",
-            component_name=easyeda_symbol.info.name,
-            kicad_version=kicad_version,
+        symbol_name = easyeda_symbol.info.name
+        symbol_lib_path = (
+            f"{arguments['output']}.kicad_symdir/"
+            f"{sanitize_symbol_filename(symbol_name)}.kicad_sym"
+            if arguments["symbol_dir"]
+            else f"{arguments['output']}.{sym_lib_ext}"
+        )
+        is_id_already_in_symbol_lib = (
+            os.path.isfile(symbol_lib_path)
+            if arguments["symbol_dir"]
+            else id_already_in_symbol_lib(
+                lib_path=symbol_lib_path,
+                component_name=symbol_name,
+                kicad_version=kicad_version,
+            )
         )
 
         if not arguments["overwrite"] and is_id_already_in_symbol_lib:
@@ -286,7 +321,10 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
             footprint_lib_name=arguments["output"].split("/")[-1].split(".")[0],
         )
 
-        if is_id_already_in_symbol_lib:
+        if arguments["symbol_dir"]:
+            with open(symbol_lib_path, "w", encoding="utf-8") as symbol_file:
+                symbol_file.write(kicad_symbol_lib)
+        elif is_id_already_in_symbol_lib:
             update_component_in_symbol_lib_file(
                 lib_path=f"{arguments['output']}.{sym_lib_ext}",
                 component_name=easyeda_symbol.info.name,
@@ -303,7 +341,7 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
         logging.info(
             f"Created Kicad symbol for ID : {component_id}\n"
             f"       Symbol name : {easyeda_symbol.info.name}\n"
-            f"       Library path : {arguments['output']}.{sym_lib_ext}"
+            f"       Library path : {symbol_lib_path}"
         )
 
     # ---------------- FOOTPRINT ----------------
