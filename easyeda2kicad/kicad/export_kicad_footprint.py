@@ -66,6 +66,15 @@ def apply_footprint_standards(footprint: KiFootprint) -> None:
         bounds[2] = max(bounds[2], pad.pos_x + half_width)
         bounds[3] = max(bounds[3], pad.pos_y + half_height)
 
+    silk_outlines = [
+        item
+        for item in footprint.tracks + footprint.rectangles
+        if item.layers in ("F.SilkS", "B.SilkS")
+    ] + [
+        item
+        for item in footprint.circles + footprint.arcs
+        if item.layers in ("F.SilkS", "B.SilkS")
+    ]
     fab_outlines = [
         item
         for item in footprint.tracks + footprint.rectangles
@@ -76,7 +85,9 @@ def apply_footprint_standards(footprint: KiFootprint) -> None:
         if item.layers in ("F.Fab", "B.Fab")
     ]
     outline_layers = (
-        {"F.Fab", "B.Fab"} if fab_outlines else {"F.SilkS", "B.SilkS"}
+        {"F.SilkS", "B.SilkS"}
+        if silk_outlines
+        else {"F.Fab", "B.Fab"} if fab_outlines else set()
     )
 
     for item in footprint.tracks + footprint.rectangles:
