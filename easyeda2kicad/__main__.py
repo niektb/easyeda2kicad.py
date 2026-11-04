@@ -335,7 +335,14 @@ def main(argv: List[str] = sys.argv[1:]) -> int:
 
         if arguments["symbol_dir"]:
             with open(symbol_lib_path, "w", encoding="utf-8") as symbol_file:
-                symbol_file.write(kicad_symbol_lib)
+                symbol_file.write(
+                    '(kicad_symbol_lib\n'
+                    '\t(version 20251024)\n'
+                    '\t(generator "kicad_symbol_editor")\n'
+                    '\t(generator_version "10.0")\n'
+                    f"{kicad_symbol_lib}\n"
+                    ")\n"
+                )
         elif is_id_already_in_symbol_lib:
             update_component_in_symbol_lib_file(
                 lib_path=f"{arguments['output']}.{sym_lib_ext}",
